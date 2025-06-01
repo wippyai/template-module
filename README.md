@@ -11,7 +11,7 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/{organization}/{repo}?style=flat-square)][releases-page]
 [![License](https://img.shields.io/github/license/{organization}/{repo}?style=flat-square)](LICENSE)
-[![Documentation](https://img.shields.io/badge/Wippy-Documentation-brightgreen.svg?style=flat-square)][wippy-documentation]]
+[![Documentation](https://img.shields.io/badge/Wippy-Documentation-brightgreen.svg?style=flat-square)][wippy-documentation]
 
 </div>
 
