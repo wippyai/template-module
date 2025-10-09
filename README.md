@@ -25,9 +25,10 @@
 
 - Replace all `{repo}` with the actual repository name.
 - Replace all `{organization}` with the actual organization name (e.g., `wippyai`).
-- Replace all `{namespace}` with the actual module namespace (e.g., `wippyai`).
+- Replace all `{vendor}` with the actual module namespace (e.g., `wippy`).
+- Replace all `{package}` with the actual package name (e.g., `llm`).
 - Replace all `{Package Name}` with the actual human-readable package name.
-- Replace the `{description}` with the actual package description.
+- Replace the `{description}` with the actual package short description.
 - Fill the `.github/CODEOWNERS` with the actual owners.
   - Configure access to the repository for the owners in https://github.com/{organization}/{repo}/settings/access
 - Check that the `LICENSE` file is present and contains the correct license information.
@@ -42,16 +43,14 @@ To trigger the registration, you need to create a new tag in the format `vX.Y.Z`
 
 Before you can use the action, you need [to set up](https://github.com/{organization}/{repo}/settings/secrets/actions) the following repository secrets.
 
-- `PRIVATE_REPO_TOKEN` - a token with permissions to clone the private repository `wippyai/module-registry-proto`.
-- `MODULE_ID` - the UUID of the module in the Wippy registry.
 - `WIPPY_USERNAME` - the UUID of the user in the Wippy registry.
 - `WIPPY_PASSWORD` - the password for the user in the Wippy registry.
 
-Register in [Wippy registry][modules-registry] and use [PackCli tool][packcli] to generate the `MODULE_ID` and `WIPPY_USERNAME`/`WIPPY_PASSWORD` credentials.
+Log in [Wippy registry][modules-registry] and use [PackCli tool][packcli] to register the new module.
 
 ---
 
 [wippy-documentation]: https://docs.wippy.ai
 [releases-page]: https://github.com/{organization}/{repo}/releases
-[packcli]: https://github.com/wippyai/packcli
+[packcli]: https://github.com/wippyai/wippy-releases/releases
 [modules-registry]: https://modules.wippy.ai
