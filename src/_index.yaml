@@ -1,2 +1,16 @@
-version: "1.0.0"
-namespace: {vendor}.{package}
+version: "1.0"
+namespace: wippy.example
+
+entries:
+  - name: definition
+    kind: ns.definition
+    readme: file://README.md
+    meta:
+      title: Example Module
+      description: Example Wippy module scaffolded from the template
+
+  - name: greeting
+    kind: library.lua
+    meta:
+      comment: Example greeting library shipped by the module
+    source: file://greeting.lua

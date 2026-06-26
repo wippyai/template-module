@@ -1,0 +1,75 @@
+name: Reusable Release
+
+on:
+  workflow_call:
+    inputs:
+      wippy-version:
+        description: Tag of the wippyai/runtime release providing the wippy binary
+        type: string
+        default: v0.3.12a
+      module-dir:
+        description: Directory containing wippy.yaml
+        type: string
+        default: .
+      publish:
+        description: Publish to the registry when a release is cut
+        type: boolean
+        default: true
+    secrets:
+      WIPPY_TOKEN:
+        description: Registry token used by wippy publish
+        required: false
+      WIPPY_REGISTRY:
+        description: Registry URL override (defaults to the wippy built-in)
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Check out the released revision
+        if: ${{ steps.release.outputs.release_created && inputs.publish }}
+        uses: actions/checkout@v7
+
+      - name: Install wippy runtime
+        if: ${{ steps.release.outputs.release_created && inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WIPPY_VERSION: ${{ inputs.wippy-version }}
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          gh release download "$WIPPY_VERSION" --repo wippyai/runtime \
+            --pattern wippy-linux-amd64 --pattern SHA256SUMS --dir "$tmp"
+          ( cd "$tmp" && sha256sum --ignore-missing -c SHA256SUMS )
+          mkdir -p "$HOME/.wippy/bin"
+          install -m 0755 "$tmp/wippy-linux-amd64" "$HOME/.wippy/bin/wippy"
+          echo "$HOME/.wippy/bin" >> "$GITHUB_PATH"
+
+      - name: Publish to the Wippy registry
+        if: ${{ steps.release.outputs.release_created && inputs.publish }}
+        working-directory: ${{ inputs.module-dir }}
+        env:
+          WIPPY_TOKEN: ${{ secrets.WIPPY_TOKEN }}
+          WIPPY_REGISTRY: ${{ secrets.WIPPY_REGISTRY }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WIPPY_TOKEN:-}" ]; then
+            echo "WIPPY_TOKEN secret is required to publish" >&2
+            exit 1
+          fi
+          [ -z "${WIPPY_REGISTRY:-}" ] && unset WIPPY_REGISTRY
+          wippy publish --version "$VERSION" --create

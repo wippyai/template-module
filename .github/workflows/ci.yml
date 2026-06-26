@@ -1,0 +1,12 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    if: ${{ github.repository != 'wippyai/template-module' }}
+    uses: wippyai/template-module/.github/workflows/reusable-ci.yml@v1
