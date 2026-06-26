@@ -68,8 +68,9 @@ add `"bump-minor-pre-major": true` to `release-please-config.json`.
 4. Set `package-name` in `release-please-config.json`.
 5. Replace the example `greeting` library and `src/test` with your own entries and tests. Update
    `src/README.md`, which is the registry-facing README referenced by the `ns.definition` entry.
-6. Add a `WIPPY_TOKEN` repository secret (a registry token) and a `RELEASE_PLEASE_TOKEN` secret
-   (see Notes). Optionally add `WIPPY_REGISTRY` to target a non-default registry.
+6. Add a `WIPPY_TOKEN` repository secret (a registry token) and the release-please App secrets
+   `RELEASE_PLEASE_APP_ID` / `RELEASE_PLEASE_APP_PRIVATE_KEY` (or a `RELEASE_PLEASE_TOKEN` PAT) —
+   see Notes. Optionally add `WIPPY_REGISTRY` to target a non-default registry.
 7. `.github/workflows/ci.yml` and `release.yml` already call the central reusable workflows at
    `wippyai/template-module@v1`. You may delete `self-test.yml` and the two `reusable-*.yml`
    files; they only run inside this template repository.
@@ -84,18 +85,22 @@ Add the following to your module repository and open a pull request:
   `.release-please-manifest.json`, seeding the manifest with the module's current published version.
 - `.github/workflows/ci.yml` and `.github/workflows/release.yml` copied from this template (they
   reference `wippyai/template-module@v1`).
-- `WIPPY_TOKEN` and `RELEASE_PLEASE_TOKEN` repository secrets (see Notes).
+- `WIPPY_TOKEN` and the release-please App secrets `RELEASE_PLEASE_APP_ID` /
+  `RELEASE_PLEASE_APP_PRIVATE_KEY` (or a `RELEASE_PLEASE_TOKEN` PAT) — see Notes.
 
 ## Notes
 
 - The `wippyai` organization blocks GitHub Actions from creating pull requests, so release-please
-  cannot open the release pull request with the default `GITHUB_TOKEN`. Add a `RELEASE_PLEASE_TOKEN`
-  secret (a PAT, or a GitHub App token via `actions/create-github-app-token`) with `contents` and
-  `pull-requests` write; the reusable release workflow uses it and falls back to `GITHUB_TOKEN`
-  otherwise. Alternatively, enable "Allow GitHub Actions to create and approve pull requests".
-- The release pull request is opened by a token, so `pull_request` workflows do not run on it. Do
-  not make the CI or PR-title checks required status checks on the release pull request, or it will
-  be unmergeable.
+  cannot open the release pull request with the default `GITHUB_TOKEN`. Configure a GitHub App
+  (recommended): create an App with `contents: write` and `pull requests: write`, install it on the
+  repository, and set `RELEASE_PLEASE_APP_ID` and `RELEASE_PLEASE_APP_PRIVATE_KEY` as
+  org/repository secrets. The reusable release workflow mints a short-lived token from the App. A
+  `RELEASE_PLEASE_TOKEN` PAT is supported as a fallback, and it falls back to `GITHUB_TOKEN` if
+  neither is set (which only works if the org enables "Allow GitHub Actions to create and approve
+  pull requests").
+- A release pull request opened with a GitHub App or PAT token triggers `pull_request` workflows;
+  one opened with `GITHUB_TOKEN` does not. Configure the App or PAT if you want the CI and PR-title
+  checks to run on the release pull request.
 - CI downloads the `wippy` binary from public `wippyai/runtime` releases using the repository
   `GITHUB_TOKEN`.
 

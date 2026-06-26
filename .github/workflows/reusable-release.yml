@@ -16,8 +16,14 @@ on:
         type: boolean
         default: true
     secrets:
+      RELEASE_PLEASE_APP_ID:
+        description: GitHub App ID for release-please (preferred over RELEASE_PLEASE_TOKEN)
+        required: false
+      RELEASE_PLEASE_APP_PRIVATE_KEY:
+        description: GitHub App private key paired with RELEASE_PLEASE_APP_ID
+        required: false
       RELEASE_PLEASE_TOKEN:
-        description: Token (PAT or GitHub App) for release-please to open the release PR
+        description: PAT fallback for release-please when no GitHub App is configured
         required: false
       WIPPY_TOKEN:
         description: Registry token used by wippy publish
@@ -34,11 +40,31 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Detect GitHub App configuration
+        id: cfg
+        env:
+          APP_ID: ${{ secrets.RELEASE_PLEASE_APP_ID }}
+        run: |
+          set -euo pipefail
+          if [ -n "${APP_ID:-}" ]; then
+            echo "use_app=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "use_app=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Mint GitHub App token
+        id: app-token
+        if: ${{ steps.cfg.outputs.use_app == 'true' }}
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+
       - name: Run release-please
         id: release
         uses: googleapis/release-please-action@v5
         with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          token: ${{ steps.app-token.outputs.token || secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
