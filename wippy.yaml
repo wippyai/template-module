@@ -1,5 +1,6 @@
 organization: wippy
 module: example
+type: library
 version: 0.0.0
 description: Example Wippy module scaffolded from the template
 license: MPL-2.0

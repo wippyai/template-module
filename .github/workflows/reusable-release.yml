@@ -4,75 +4,90 @@ on:
   workflow_call:
     inputs:
       wippy-version:
-        description: Tag of the wippyai/runtime release providing the wippy binary
+        description: Tag of the official Wippy runtime release
         type: string
-        default: v0.3.12a
+        default: v0.3.56a
       module-dir:
         description: Directory containing wippy.yaml
         type: string
         default: .
       publish:
-        description: Publish to the registry when a release is cut
+        description: Publish the released module to the Hub
         type: boolean
         default: true
     secrets:
       RELEASE_PLEASE_APP_ID:
-        description: GitHub App ID for release-please (preferred over RELEASE_PLEASE_TOKEN)
-        required: false
+        description: GitHub App ID for release-please
+        required: true
       RELEASE_PLEASE_APP_PRIVATE_KEY:
-        description: GitHub App private key paired with RELEASE_PLEASE_APP_ID
-        required: false
-      RELEASE_PLEASE_TOKEN:
-        description: PAT fallback for release-please when no GitHub App is configured
-        required: false
+        description: GitHub App private key for release-please
+        required: true
       WIPPY_TOKEN:
-        description: Registry token used by wippy publish
+        description: Hub token required when publish is true
         required: false
       WIPPY_REGISTRY:
-        description: Registry URL override (defaults to the wippy built-in)
+        description: Optional Hub URL override
         required: false
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
+
+concurrency:
+  group: module-release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  checks:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/reusable-ci.yml
+    with:
+      wippy-version: ${{ inputs.wippy-version }}
+      module-dir: ${{ inputs.module-dir }}
+
   release:
+    needs: checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      - name: Detect GitHub App configuration
-        id: cfg
+      - name: Check publishing configuration
+        if: ${{ inputs.publish }}
         env:
-          APP_ID: ${{ secrets.RELEASE_PLEASE_APP_ID }}
+          WIPPY_TOKEN: ${{ secrets.WIPPY_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -n "${APP_ID:-}" ]; then
-            echo "use_app=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "use_app=false" >> "$GITHUB_OUTPUT"
+          if [ -z "${WIPPY_TOKEN:-}" ]; then
+            echo 'WIPPY_TOKEN is required when publish is true' >&2
+            exit 1
           fi
 
-      - name: Mint GitHub App token
+      - name: Mint release app token
         id: app-token
-        if: ${{ steps.cfg.outputs.use_app == 'true' }}
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.RELEASE_PLEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Run release-please
         id: release
-        uses: googleapis/release-please-action@v5
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          token: ${{ steps.app-token.outputs.token || secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          token: ${{ steps.app-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
       - name: Check out the released revision
         if: ${{ steps.release.outputs.release_created && inputs.publish }}
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.tag_name }}
+          persist-credentials: false
 
-      - name: Install wippy runtime
+      - name: Install Wippy runtime
         if: ${{ steps.release.outputs.release_created && inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -80,14 +95,21 @@ jobs:
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
           gh release download "$WIPPY_VERSION" --repo wippyai/runtime \
             --pattern wippy-linux-amd64 --pattern SHA256SUMS --dir "$tmp"
           ( cd "$tmp" && sha256sum --ignore-missing -c SHA256SUMS )
-          mkdir -p "$HOME/.wippy/bin"
-          install -m 0755 "$tmp/wippy-linux-amd64" "$HOME/.wippy/bin/wippy"
+          install -Dm0755 "$tmp/wippy-linux-amd64" "$HOME/.wippy/bin/wippy"
           echo "$HOME/.wippy/bin" >> "$GITHUB_PATH"
 
-      - name: Publish to the Wippy registry
+      - name: Check release package
+        if: ${{ steps.release.outputs.release_created && inputs.publish }}
+        working-directory: ${{ inputs.module-dir }}
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: wippy publish --version "$VERSION" --dry-run
+
+      - name: Publish to the Hub
         if: ${{ steps.release.outputs.release_created && inputs.publish }}
         working-directory: ${{ inputs.module-dir }}
         env:
@@ -96,9 +118,5 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
-          if [ -z "${WIPPY_TOKEN:-}" ]; then
-            echo "WIPPY_TOKEN secret is required to publish" >&2
-            exit 1
-          fi
           [ -z "${WIPPY_REGISTRY:-}" ] && unset WIPPY_REGISTRY
           wippy publish --version "$VERSION" --create

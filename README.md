@@ -15,8 +15,8 @@
 </div>
 
 A template for building, testing, and publishing a [Wippy][wippy] module. It ships GitHub Actions
-that lint and test the module on every pull request, then automatically version and publish it to
-the [Wippy registry][modules-registry] on every merge to `main`, driven by
+that lint and test the module on every pull request, then version and publish it through
+release pull requests on `main`, driven by
 [Conventional Commits][conventional-commits].
 
 The repository is itself a working example module (a `greeting` library plus a test) so its own CI
@@ -55,7 +55,8 @@ add `"bump-minor-pre-major": true` to `release-please-config.json`.
    updates `CHANGELOG.md`, and updates `.release-please-manifest.json`.
 3. Merge the release pull request. release-please creates the git tag and GitHub release, and the
    same workflow run then executes `wippy publish`, pushing the new immutable version to the
-   registry. (Publishing happens in the same run, so it does not depend on the tag event.)
+   registry. The release workflow runs CI before release-please. Publishing uses the exact released
+   tag and checks the package before upload; it does not depend on a second tag-triggered workflow.
 
 ## Use this template for a new module
 
@@ -68,11 +69,10 @@ add `"bump-minor-pre-major": true` to `release-please-config.json`.
 4. Set `package-name` in `release-please-config.json`.
 5. Replace the example `greeting` library and `src/test` with your own entries and tests. Update
    `src/README.md`, which is the registry-facing README referenced by the `ns.definition` entry.
-6. Add a `WIPPY_TOKEN` repository secret (a registry token) and the release-please App secrets
-   `RELEASE_PLEASE_APP_ID` / `RELEASE_PLEASE_APP_PRIVATE_KEY` (or a `RELEASE_PLEASE_TOKEN` PAT) —
-   see Notes. Optionally add `WIPPY_REGISTRY` to target a non-default registry.
+6. Add a `WIPPY_TOKEN` repository secret (a Hub token) and the release-please App secrets
+   `RELEASE_PLEASE_APP_ID` / `RELEASE_PLEASE_APP_PRIVATE_KEY` — see Notes. Optionally add `WIPPY_REGISTRY` to target a non-default registry.
 7. `.github/workflows/ci.yml` and `release.yml` already call the central reusable workflows at
-   `wippyai/template-module@v1`. You may delete `self-test.yml` and the two `reusable-*.yml`
+   `wippyai/template-module@v1`. You may delete `self-test.yml`, `tag-major.yml` and the two `reusable-*.yml`
    files; they only run inside this template repository.
 
 ## Migrate an existing module
@@ -86,33 +86,36 @@ Add the following to your module repository and open a pull request:
 - `.github/workflows/ci.yml` and `.github/workflows/release.yml` copied from this template (they
   reference `wippyai/template-module@v1`).
 - `WIPPY_TOKEN` and the release-please App secrets `RELEASE_PLEASE_APP_ID` /
-  `RELEASE_PLEASE_APP_PRIVATE_KEY` (or a `RELEASE_PLEASE_TOKEN` PAT) — see Notes.
+  `RELEASE_PLEASE_APP_PRIVATE_KEY` — see Notes.
 
-## Notes
+## Release configuration
 
-- The `wippyai` organization blocks GitHub Actions from creating pull requests, so release-please
-  cannot open the release pull request with the default `GITHUB_TOKEN`. Configure a GitHub App
-  (recommended): create an App with `contents: write` and `pull requests: write`, install it on the
-  repository, and set `RELEASE_PLEASE_APP_ID` and `RELEASE_PLEASE_APP_PRIVATE_KEY` as
-  org/repository secrets. The reusable release workflow mints a short-lived token from the App. A
-  `RELEASE_PLEASE_TOKEN` PAT is supported as a fallback, and it falls back to `GITHUB_TOKEN` if
-  neither is set (which only works if the org enables "Allow GitHub Actions to create and approve
-  pull requests").
-- A release pull request opened with a GitHub App or PAT token triggers `pull_request` workflows;
-  one opened with `GITHUB_TOKEN` does not. Configure the App or PAT if you want the CI and PR-title
-  checks to run on the release pull request.
-- CI downloads the `wippy` binary from public `wippyai/runtime` releases using the repository
-  `GITHUB_TOKEN`.
+The release workflow uses a GitHub App with `contents: write` and
+`pull requests: write`, installed on the module repository. Set
+`RELEASE_PLEASE_APP_ID` and `RELEASE_PLEASE_APP_PRIVATE_KEY` as repository or
+organization secrets. App-authored release pull requests trigger their normal CI.
+The workflow does not use the default Actions token to open release pull requests.
+
+Publishing is enabled for generated modules. Set `WIPPY_TOKEN` before the first
+merge: the release workflow checks it before creating a release. Use `publish: false`
+on the reusable release call when a repository should create GitHub releases only.
+`--create` creates a missing Hub module as private; configure its intended visibility
+in the Hub. A failed lint or test job blocks both release-please and publication.
+
+CI uses official Runtime `v0.3.56a` by default, verifies its release checksum,
+installs locked dependencies, then runs lint and the published `wippy/test` runner.
+The scaffold uses BDD cases and `WIPPY_TEST_REQUIRE_CASES=1`; missing or skipped-only
+cases fail CI. The test namespace, including its test-library dependency, is excluded
+from the published module.
 
 ## Maintaining this template
 
-The reusable workflows are consumed at `wippyai/template-module@v1`. Releasing the template means
-pushing a `vX.Y.Z` tag on `main`; `tag-major.yml` then moves the floating `v1` tag to it, so
-consumers pinned to `@v1` pick up the change. Create the first `v1` line with:
-
-```sh
-git tag v1.0.0 && git push origin v1.0.0
-```
+This repository validates its own workflows through `self-test.yml`. Its release
+workflow calls the local reusable workflow with `publish: false`: release-please
+creates the template's release pull request and GitHub release without publishing
+the example library to the Hub. `tag-major.yml` moves the floating `v1` reference
+to the released tag. Consumers at `wippyai/template-module@v1` then use that release.
+Do not move `v1` to an unmerged branch or manually edit release metadata.
 
 ## Local development
 
@@ -120,8 +123,9 @@ Install the `wippy` CLI by downloading a release binary from [runtime releases][
 then from the module directory:
 
 ```sh
+wippy install
 wippy lint --level error
-wippy test
+WIPPY_TEST_REQUIRE_CASES=1 wippy test
 wippy publish --dry-run --version 0.1.0
 ```
 
@@ -140,12 +144,12 @@ wippy publish --dry-run --version 0.1.0
 ├── .release-please-manifest.json
 ├── wippy.yaml               # module manifest (organization, module, version)
 ├── wippy.lock               # dependency lock
-└── src/                     # module source and tests
+└── src/                     # module source and BDD cases (wippy/test owns the runner)
 ```
 
 [wippy]: https://wippy.ai
-[wippy-documentation]: https://docs.wippy.ai
-[modules-registry]: https://modules.wippy.ai
+[wippy-documentation]: https://wippy.ai
+[modules-registry]: https://hub.wippy.ai
 [conventional-commits]: https://www.conventionalcommits.org
 [release-please]: https://github.com/googleapis/release-please
 [runtime]: https://github.com/wippyai/runtime

@@ -2,37 +2,10 @@ version: "1.0"
 namespace: wippy.example.test
 
 entries:
-  - name: processes
-    kind: process.host
-    meta:
-      comment: Process host used to run the test entrypoint
-    host:
-      max_processes: 1000
-      workers: 8
-    lifecycle:
-      auto_start: true
-
-  - name: terminal
-    kind: terminal.host
-    meta:
-      comment: Terminal host used to exec the test runner
-    lifecycle:
-      auto_start: true
-
-  - name: runner
-    kind: process.lua
-    meta:
-      comment: Discovers and runs every entry with meta.type=test
-      command:
-        name: test
-        short: Run module tests
-        use_case: test
-    source: file://runner.lua
-    method: main
-    modules:
-      - io
-      - registry
-      - funcs
+  - name: test_dependency
+    kind: ns.dependency
+    component: wippy/test
+    version: ">=0.4.24"
 
   - name: greeting
     kind: function.lua
@@ -41,6 +14,7 @@ entries:
       suite: greeting
       description: greeting.greet returns a formatted greeting
     source: file://greeting_test.lua
-    method: main
+    method: run
     imports:
       greeting: wippy.example:greeting
+      test: wippy.test:test

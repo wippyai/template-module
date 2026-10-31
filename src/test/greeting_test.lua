@@ -1,12 +1,12 @@
 local greeting = require("greeting")
+local test = require("test")
 
-local function main()
-    local result = greeting.greet("Wippy")
-    if result ~= "Hello, Wippy!" then
-        error("expected 'Hello, Wippy!', got '" .. tostring(result) .. "'")
-    end
-
-    return true
+local function define_tests()
+    test.describe("Greeting", function()
+        test.it("greets the requested name", function()
+            test.eq(greeting.greet("Wippy"), "Hello, Wippy!")
+        end)
+    end)
 end
 
-return { main = main }
+return { run = test.run_cases(define_tests) }

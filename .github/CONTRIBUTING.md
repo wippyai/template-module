@@ -14,8 +14,9 @@ Allowed types: `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`, `buil
 Before opening a pull request, run the checks locally from the module directory:
 
 ```sh
+wippy install
 wippy lint --level error
-wippy test
+WIPPY_TEST_REQUIRE_CASES=1 wippy test
 ```
 
 [conventional-commits]: https://www.conventionalcommits.org
