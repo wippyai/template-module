@@ -1,0 +1,85 @@
+name: Reusable CI
+
+on:
+  workflow_call:
+    inputs:
+      wippy-version:
+        description: Tag of the wippyai/runtime release providing the wippy binary
+        type: string
+        default: v0.3.56a
+      module-dir:
+        description: Directory containing wippy.yaml
+        type: string
+        default: .
+      lint-level:
+        description: Minimum lint severity that fails the build (error, warning, hint)
+        type: string
+        default: error
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install wippy runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WIPPY_VERSION: ${{ inputs.wippy-version }}
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          gh release download "$WIPPY_VERSION" --repo wippyai/runtime \
+            --pattern wippy-linux-amd64 --pattern SHA256SUMS --dir "$tmp"
+          ( cd "$tmp" && sha256sum --ignore-missing -c SHA256SUMS )
+          mkdir -p "$HOME/.wippy/bin"
+          install -m 0755 "$tmp/wippy-linux-amd64" "$HOME/.wippy/bin/wippy"
+          echo "$HOME/.wippy/bin" >> "$GITHUB_PATH"
+          "$HOME/.wippy/bin/wippy" version
+
+      - name: Install locked dependencies
+        working-directory: ${{ inputs.module-dir }}
+        run: wippy install
+
+      - name: Lint
+        working-directory: ${{ inputs.module-dir }}
+        env:
+          LINT_LEVEL: ${{ inputs.lint-level }}
+        run: wippy lint --level "$LINT_LEVEL" --no-color
+
+      - name: Test
+        working-directory: ${{ inputs.module-dir }}
+        env:
+          WIPPY_TEST_REQUIRE_CASES: "1"
+        run: wippy test --silent
+
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Enforce Conventional Commit pull request title
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          types: |
+            feat
+            fix
+            chore
+            refactor
+            docs
+            test
+            perf
+            build
+            ci
+            style
+            revert

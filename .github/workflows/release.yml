@@ -1,0 +1,22 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  template-release:
+    if: ${{ github.repository == 'wippyai/template-module' }}
+    uses: ./.github/workflows/reusable-release.yml
+    with:
+      publish: false
+    secrets: inherit
+
+  module-release:
+    if: ${{ github.repository != 'wippyai/template-module' }}
+    uses: wippyai/template-module/.github/workflows/reusable-release.yml@v1
+    secrets: inherit

@@ -1,0 +1,122 @@
+name: Reusable Release
+
+on:
+  workflow_call:
+    inputs:
+      wippy-version:
+        description: Tag of the official Wippy runtime release
+        type: string
+        default: v0.3.56a
+      module-dir:
+        description: Directory containing wippy.yaml
+        type: string
+        default: .
+      publish:
+        description: Publish the released module to the Hub
+        type: boolean
+        default: true
+    secrets:
+      RELEASE_PLEASE_APP_ID:
+        description: GitHub App ID for release-please
+        required: true
+      RELEASE_PLEASE_APP_PRIVATE_KEY:
+        description: GitHub App private key for release-please
+        required: true
+      WIPPY_TOKEN:
+        description: Hub token required when publish is true
+        required: false
+      WIPPY_REGISTRY:
+        description: Optional Hub URL override
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: module-release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/reusable-ci.yml
+    with:
+      wippy-version: ${{ inputs.wippy-version }}
+      module-dir: ${{ inputs.module-dir }}
+
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check publishing configuration
+        if: ${{ inputs.publish }}
+        env:
+          WIPPY_TOKEN: ${{ secrets.WIPPY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WIPPY_TOKEN:-}" ]; then
+            echo 'WIPPY_TOKEN is required when publish is true' >&2
+            exit 1
+          fi
+
+      - name: Mint release app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Check out the released revision
+        if: ${{ steps.release.outputs.release_created && inputs.publish }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.tag_name }}
+          persist-credentials: false
+
+      - name: Install Wippy runtime
+        if: ${{ steps.release.outputs.release_created && inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WIPPY_VERSION: ${{ inputs.wippy-version }}
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          gh release download "$WIPPY_VERSION" --repo wippyai/runtime \
+            --pattern wippy-linux-amd64 --pattern SHA256SUMS --dir "$tmp"
+          ( cd "$tmp" && sha256sum --ignore-missing -c SHA256SUMS )
+          install -Dm0755 "$tmp/wippy-linux-amd64" "$HOME/.wippy/bin/wippy"
+          echo "$HOME/.wippy/bin" >> "$GITHUB_PATH"
+
+      - name: Check release package
+        if: ${{ steps.release.outputs.release_created && inputs.publish }}
+        working-directory: ${{ inputs.module-dir }}
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: wippy publish --version "$VERSION" --dry-run
+
+      - name: Publish to the Hub
+        if: ${{ steps.release.outputs.release_created && inputs.publish }}
+        working-directory: ${{ inputs.module-dir }}
+        env:
+          WIPPY_TOKEN: ${{ secrets.WIPPY_TOKEN }}
+          WIPPY_REGISTRY: ${{ secrets.WIPPY_REGISTRY }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          [ -z "${WIPPY_REGISTRY:-}" ] && unset WIPPY_REGISTRY
+          wippy publish --version "$VERSION" --create

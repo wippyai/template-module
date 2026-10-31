@@ -1,0 +1,17 @@
+name: Self Test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ci:
+    if: ${{ github.repository == 'wippyai/template-module' }}
+    uses: ./.github/workflows/reusable-ci.yml

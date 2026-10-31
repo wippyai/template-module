@@ -3,6 +3,8 @@
 /runtime
 /dist
 /build
+/.wippy
+*.wapp
 
 # Dependency directories
 /node_modules
@@ -19,3 +21,7 @@
 
 # env file
 .env
+
+/.local/
+
+/wippy.lock.runtime.lock
